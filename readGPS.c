@@ -18,6 +18,7 @@
 #define buffLen 24
 #define rcvTimeOut 4
 #define fileSave "fileSave.txt"
+#define fileSaveGPS "fileSaveGPS.txt"
 
 /*************Linux and Serial Port *********************/
 /*************Linux and Serial Port *********************/
@@ -156,6 +157,10 @@ int setOpt(int fd, int nSpeed, int nBits, char nEvent, int nStop)
 
 	switch (nSpeed)
 	{
+	case 1200:
+		cfsetispeed(&newtio, B1200);
+		cfsetospeed(&newtio, B1200);
+		break;
 	case 2400:
 		cfsetispeed(&newtio, B2400);
 		cfsetospeed(&newtio, B2400);
@@ -360,114 +365,91 @@ int serialSubProcess(int num,int max)
 	}
 }
 
+void parseData(char *buf)
+{
+	int ret, nQ, nN, nB, nC;
+
+	char cX, cY, cM1, cM2;
+
+	float fTime, fX, fY, fP, fH, fB, fD;
+
+
+
+	if (buf == NULL)
+
+		return;
+
+	ret = sscanf(buf,
+
+		"$GPGGA,%f,%f,%c,%f,%c,%d,%02d,%f,%f,%c,%f,%c,%f,%04d%02x",
+
+		&fTime, &fX, &cX, &fY, &cY, &nQ, &nN, &fP, &fH, &cM1, &fB,
+
+		&cM2, &fD, &nB, &nC);
+
+	printf("x: %c %f, y: %c %f, h %f, satellite: %d\n",
+
+		cX, fX, cY, fY, fH, nN);
+
+}
 
 int main(int argc, char** argv)
 {
+	char bufGPS[1024] ="$GPGGA,064746.000,4925.4895,N,00103.99255,E,1,05,2.1,-68.0,M,47.1,M,,0000*4F\r\n"; // 此处赋值用于测试
 
 	pid_t pid;
-	int iSetOpt = 0;
-	int fdSerial = 0;
-
-	unsigned int readDataNum = 0;
-	char buffRcvData[buffLen] = { 0 };
+	int fdGPS, i, ret;
+	int iSetOpt;
 
 	//打开保存文件
-	int fdFileSave = 0;
+	int fdFileSaveGPS = 0;
 
-	if ((fdFileSave = open(fileSave, O_WRONLY | O_CREAT | O_APPEND)) == -1)
+	if ((fdFileSaveGPS = open(fileSaveGPS, O_WRONLY | O_CREAT | O_APPEND)) == -1)
 	{
-		printf("Open %s Error\n", fileSave);
+		printf("Open %s Error\n", fileSaveGPS);
 		exit(1);
 	}
 
-	pid = fork();
-	if (pid<0)
+	//openPort
+	if ((fdGPS = openPort(fdGPS, 2))<0)//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
 	{
-		perror("fork error!\n");
-		exit(1);
+		perror("open_port error");
+		return -1;
 	}
-	//子进程   
-	else if (pid == 0)
+	//setOpt(fdSerial, 9600, 8, 'N', 1)
+	//if ((iSetOpt = setOpt(fdGPS, 9600, 8, 'N', 1))<0)
+	//if ((iSetOpt = setOpt(fdGPS, 4800, 8, 'N', 1))<0)
+	//if ((iSetOpt = setOpt(fdGPS, 2400, 8, 'N', 1))<0)
+	//if ((iSetOpt = setOpt(fdGPS, 115200, 8, 'N', 1))<0)
+	if ((iSetOpt = setOpt(fdGPS, 1200, 8, 'N', 1))<0)
 	{
-		//sleep(3);
-		printf("Son Process id=%d,Parent Process id=%d\n", getpid(), getppid());
-	
-			//openPort
-			if ((fdSerial = openPort(fdSerial, 5))<0)//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
-			{
-				perror("open_port error");
-				return -1;
-			}
-			//setOpt(fdSerial, 9600, 8, 'N', 1)
-			if ((iSetOpt = setOpt(fdSerial, 9600, 8, 'N', 1))<0)
-			{
-				perror("set_opt error");
-				//return -1;
-			}
-			printf("Serial fdSerial=%d\n", fdSerial);
-
-			tcflush(fdSerial, TCIOFLUSH);//清掉串口缓存
-			fcntl(fdSerial, F_SETFL, 0);//这个是设置为默认的阻塞模式的
-
-			
-			while (1){
-				readDataNum = read(fdSerial, buffRcvData, buffLen);
-				write(fdFileSave, buffRcvData, readDataNum);//将数据保存在文件fdFileSave 即"fileSave.txt"
-			}
-
-	}
-	else
-	{
-	printf("Parent Process id=%d\n", getpid());
-	sleep(5);
+		perror("set_opt error");
+		return -1;
 	}
 
+	printf("Serial fdSerial=%d\n", fdGPS);
 
+	tcflush(fdGPS, TCIOFLUSH);//清掉串口缓存
+	fcntl(fdGPS, F_SETFL, 0);//这个是设置为默认的阻塞模式的	
 
-/*下面是可以单独运行的读取并存储数据的程序*/
-	//int iSetOpt = 0;
-	//int fdSerial = 0;
-
-	//unsigned int readDataNum = 0;
-	//char buffRcvData[buffLen] = { 0 };
-
-	////打开保存文件
-	//int fdFileSave = 0;
-
-	//if ((fdFileSave = open(fileSave, O_WRONLY | O_CREAT | O_APPEND)) == -1)
+	//for (i = 0; i < 100; i++)
 	//{
-	//	printf("Open %s Error\n", fileSave);
-	//	exit(1);
+	//	ret = read(fdGPS, bufGPS, 1024);
+	//	write(fdFileSaveGPS, bufGPS, ret);
+	//	/*if (ret > 1)
+	//	{
+	//		if (strstr(bufGPS, "GPGGA") != NULL)
+	//		parseData(bufGPS);
+	//	}*/
 	//}
-	////openPort
-	//if ((fdSerial = openPort(fdSerial, 5))<0)//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
-	//{
-	//	perror("open_port error");
-	//	return -1;
-	//}
-	////setOpt(fdSerial, 9600, 8, 'N', 1)
-	//if ((iSetOpt = setOpt(fdSerial, 9600, 8, 'N', 1))<0)
-	//{
-	//	perror("set_opt error");
-	//	//return -1;
-	//}
-	//printf("Serial fdSerial=%d\n", fdSerial);
-
-	//tcflush(fdSerial, TCIOFLUSH);//清掉串口缓存
-	//fcntl(fdSerial, F_SETFL, 0);//这个是设置为默认的阻塞模式的
-	////while (1){
-	////	readDataNum = readDataTty(fdSerial, buffRcvData, rcvTimeOut, buffLen);
-	////	//write(fdFileSave, buffRcvData, readDataNum);//将数据保存在文件fdFileSave 即"fileSave.txt"
-	////	printf("%s\n", buffRcvData);
-	////}
-	//while (1){
-	//	readDataNum = read(fdSerial, buffRcvData, buffLen);
-	//	write(fdFileSave, buffRcvData, readDataNum);//将数据保存在文件fdFileSave 即"fileSave.txt"
-	//	//printf("%s\n", buffRcvData);
-	//}
-		
-
-	
-
+	while (1){
+		ret = read(fdGPS, bufGPS, 1024);
+		if (ret > 1)
+		{
+			if (strstr(bufGPS, "GPGGA") != NULL)
+			parseData(bufGPS);
+		}
+		//write(fdFileSaveGPS, bufGPS, ret);//将数据保存在文件fdFileSave 即"fileSave.txt"
+	}
 	return 0;
 }
