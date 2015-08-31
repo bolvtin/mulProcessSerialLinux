@@ -214,7 +214,7 @@ int setOpt(int fd, int nSpeed, int nBits, char nEvent, int nStop)
 	printf("set done!\n");
 	return 0;
 }
-//还是不用这个读取数据了吧，直接使用read()函数
+//还是不用这个读取数据了吧，直接使用read()函数,当然了，用这个读取其实也没什么问题
 int readDataTty(int fd, char *rcv_buf, int TimeOut, int Len)
 {
 	int retval;
@@ -272,21 +272,50 @@ int sendDataTty(int fd, char *send_buf, int Len)
 
 	return 1;
 }
-
-int serialSubProcess(int num,int max)
-{
-	pid_t pid;
-	int iSetOpt = 0;
-	int fdSerial = 0;
-
-	int iSetOpt1 = 0;
-	int fdSerial1 = 0;
+int dataSave(int fd, int fdFileSave, int portNum, int baudRate,int setOptRet){
 
 	unsigned int readDataNum = 0;
 	char buffRcvData[buffLen] = { 0 };
-	
-	int printNum = 0;
-	//打开保存文件
+
+	if ((fd = openPort(fd, portNum))<0)
+	{
+		perror("open_port error");
+		return -1;
+	}
+	//setOpt(fdSerial, 9600, 8, 'N', 1)
+	if ((setOptRet = setOpt(fd, baudRate, 8, 'N', 1))<0)
+	{
+		perror("set_opt error");
+		return -1;
+	}
+	printf("Serial fdSerial=%d\n", fd);
+
+	tcflush(fd, TCIOFLUSH);//清掉串口缓存
+	fcntl(fd, F_SETFL, 0);//这个是设置为默认的阻塞模式的
+
+	while (1){
+		readDataNum = read(fd, buffRcvData, buffLen);
+		write(fdFileSave, buffRcvData, readDataNum);//将数据保存在文件fdFileSave 即"fileSave.txt"
+	}
+}
+int serialSubProcess(int num,int max)
+{
+	//子进程PID
+	pid_t pid;
+
+	//所有子进程公用的返回读取数据个数readDataNum，以及读取数据时的存储缓存数组buffRcvData[buffLen]
+	unsigned int readDataNum = 0;
+	char buffRcvData[buffLen] = { 0 };
+
+	//返回值----setOpt()返回值
+	int iSetOpt = 0;
+	//int iSetOpt1 = 0;
+
+	//串口文件描述符----openPort(fdSerial, 5))<0)，打开串口设备的返回的文件描述符
+	int fdSerial = 0;
+	int fdSerial1 = 0;
+
+	//数据保存的txt文件的文件描述符----open(fileSave, O_WRONLY | O_CREAT | O_APPEND)) == -1)，打开保存文件的返回的文件描述符
 	int fdFileSave = 0;
 	int fdFileSave1 = 0;
 
@@ -304,169 +333,133 @@ int serialSubProcess(int num,int max)
 
 	if (num >= max)return;
 	pid = fork();
+
+	//开进程失败
 	if (pid<0)
 	{
 		perror("fork error!\n");
 		exit(1);
 	}
-	//子进程   
+
+	//子进程----进入子进程   
 	else if (pid == 0)
 	{
-		//sleep(3);
-		printf("Son Process id=%d,Parent Process id=%d\n", getpid(), getppid());
+		sleep(3);
+		//printf("Son Process id=%d,Parent Process id=%d\n", getpid(), getppid());
 		switch (num){
 		case 0:
+			printf("**********************************************\n");
+			printf("Son Process id=%d,Parent Process id=%d\n", getpid(), getppid());
+
+			//int dataSave(int fd, int fdFileSave, int portNum, int baudRate, int setOptRet)
+			dataSave(fdSerial, fdFileSave, 5, 9600, iSetOpt);
+			printf("the  /dev/ttyACM0 is receving data! \n");
+
 			//openPort
-			if ((fdSerial = openPort(fdSerial, 5))<0)//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
-			{
-				perror("open_port error");
-				return -1;
-			}
-			//setOpt(fdSerial, 9600, 8, 'N', 1)
-			if ((iSetOpt = setOpt(fdSerial, 9600, 8, 'N', 1))<0)
-			{
-				perror("set_opt error");
-				//return -1;
-			}
-			printf("Serial fdSerial=%d\n", fdSerial);
+			//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
+			//5--"/dev/ttyACM0"（这个是APM板子的USB串口在Ubuntu上的设备表示）,6--"/dev/ttyACM0"
 
-			tcflush(fdSerial, TCIOFLUSH);//清掉串口缓存
-			fcntl(fdSerial, F_SETFL, 0);//这个是设置为默认的阻塞模式的
+			//test
+			//if ((fdSerial = openPort(fdSerial, 5))<0)
+			//{
+			//	perror("open_port error");
+			//	return -1;
+			//}
+			////setOpt(fdSerial, 9600, 8, 'N', 1)
+			//if ((iSetOpt = setOpt(fdSerial, 9600, 8, 'N', 1))<0)
+			//{
+			//	perror("set_opt error");
+			//	return -1;
+			//}
+			//printf("Serial fdSerial=%d\n", fdSerial);
 
-			/*readDataNum = readDataTty(fdSerial, buffRcvData, rcvTimeOut, buffLen);
-			while (1){
-				printNum++;
-				printf("%d\n", printNum);
-			}*/
-			
-			while (1){
-				readDataNum = read(fdSerial, buffRcvData, buffLen);
-				write(fdFileSave, buffRcvData, readDataNum);//将数据保存在文件fdFileSave 即"fileSave.txt"
-			}
+			//tcflush(fdSerial, TCIOFLUSH);//清掉串口缓存
+			//fcntl(fdSerial, F_SETFL, 0);//这个是设置为默认的阻塞模式的
+
+			///*readDataNum = readDataTty(fdSerial, buffRcvData, rcvTimeOut, buffLen);
 			//while (1){
-			//	readDataNum = readDataTty(fdSerial, buffRcvData, rcvTimeOut, buffLen);
+			//	printNum++;
+			//	printf("%d\n", printNum);
+			//}*/
+			//
+			//while (1){
+			//	readDataNum = read(fdSerial, buffRcvData, buffLen);
 			//	write(fdFileSave, buffRcvData, readDataNum);//将数据保存在文件fdFileSave 即"fileSave.txt"
 			//}
-
+			//test
 			break;
 			
 		case 1:
 			printf("**********************************************\n");
-			printf("this is the 1 serial subProcess\n");
+			printf("Son Process id=%d,Parent Process id=%d\n", getpid(), getppid());
+
+			//int dataSave(int fd, int fdFileSave, int portNum, int baudRate, int setOptRet)
+			dataSave(fdSerial1, fdFileSave1, 6, 9600, iSetOpt);
+			printf("the  /dev/ttyACM1 is receving data! \n");
+
 			//openPort
-			if ((fdSerial1 = openPort(fdSerial1, 6))<0)//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
-			{
-				perror("open_port error");
-				return -1;
-			}
-			//setOpt(fdSerial, 9600, 8, 'N', 1)
-			if ((iSetOpt1 = setOpt(fdSerial1, 9600, 8, 'N', 1))<0)
-			{
-				perror("set_opt error");
-				//return -1;
-			}
-			printf("Serial fdSerial=%d\n", fdSerial1);
+			//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
+			//5--"/dev/ttyACM0"（这个是APM板子的USB串口在Ubuntu上的设备表示）,6--"/dev/ttyACM1"
 
-			tcflush(fdSerial1, TCIOFLUSH);//清掉串口缓存
-			fcntl(fdSerial1, F_SETFL, 0);//这个是设置为默认的阻塞模式的
-
-			/*readDataNum = readDataTty(fdSerial, buffRcvData, rcvTimeOut, buffLen);
-			while (1){
-			printNum++;
-			printf("%d\n", printNum);
-			}*/
-
-			while (1){
-				readDataNum = read(fdSerial1, buffRcvData, buffLen);
-				write(fdFileSave1, buffRcvData, readDataNum);//将数据保存在文件fdFileSave 即"fileSave.txt"
-			}
-			printf("**********************************************\n");
-			////openPort
-			//if ((fdSerial1 = openPort(fdSerial1, 0))<0)//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
+			//test
+			//if ((fdSerial1 = openPort(fdSerial1, 6))<0)
 			//{
-			//	perror("open_port1 error");
+			//	perror("open_port error");
 			//	return -1;
 			//}
 			////setOpt(fdSerial, 9600, 8, 'N', 1)
 			//if ((iSetOpt1 = setOpt(fdSerial1, 9600, 8, 'N', 1))<0)
 			//{
-			//	perror("set_opt1 error");
-			//	return -1;
+			//	perror("set_opt error");
+			//	//return -1;
 			//}
-			//printf("Serial fdSerial1=%d\n", fdSerial1);
+			//printf("Serial fdSerial=%d\n", fdSerial1);
 
 			//tcflush(fdSerial1, TCIOFLUSH);//清掉串口缓存
 			//fcntl(fdSerial1, F_SETFL, 0);//这个是设置为默认的阻塞模式的
+
+			///*readDataNum = readDataTty(fdSerial, buffRcvData, rcvTimeOut, buffLen);
+			//while (1){
+			//printNum++;
+			//printf("%d\n", printNum);
+			//}*/
+
+			//while (1){
+			//	readDataNum = read(fdSerial1, buffRcvData, buffLen);
+			//	write(fdFileSave1, buffRcvData, readDataNum);//将数据保存在文件fdFileSave1 即"fileSave1.txt"
+			//}
+			//test
 			break;
 			
+		case 2:
+			//printf("**********************************************\n");
+			//printf("the  /dev/ttyACM0 is receving data! \n");
+			break;
+
 		default:
 			break;			
 		}
 	}
-	//父进程   
+	//父进程----进入父进程
 	else
 	{
 		num++;
 		if (num == 1)printf("Parent Process id=%d\n", getpid());
 		if (num<max)serialSubProcess(num,max);
+
 		//此处加sleep是为了防止父进程先退出,从而产生异常   
-		//sleep(5);
 		sleep(5);
 	}
 }
 
-
-
 int main(int argc, char** argv)
 {
-	//int iSetOpt = 0;//SetOpt 的增量i
 
-	////serialInit();
-	////send_data_tty(SerFd, "hello series\n", sizeof("hello series\n"));
+	int subProcessNum = 0;
+	int subProcessMax = 3;
 
-	//int fdSerial = 0;
-
-	////openPort
-	//if ((fdSerial = openPort(fdSerial, 4))<0)//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
-	//{
-	//	perror("open_port error");
-	//	return -1;
-	//}
-	////setOpt(fdSerial, 9600, 8, 'N', 1)
-	//if ((iSetOpt = setOpt(fdSerial, 9600, 8, 'N', 1))<0)
-	//{
-	//	perror("set_opt error");
-	//	return -1;
-	//}
-	//printf("Serial fdSerial=%d\n", fdSerial);
-
-	//tcflush(fdSerial, TCIOFLUSH);//清掉串口缓存
-	//fcntl(fdSerial, F_SETFL, 0);//这个是设置为默认的阻塞模式的
-
-
-	//char buffRcvData[buffLen] = { 0 };
-	//unsigned int readDataNum = 0;
-
-	//buffRcvData[0] = 's';
-	//buffRcvData[1] = 't';
-	//buffRcvData[2] = 'a';
-	//buffRcvData[3] = 'r';
-	//buffRcvData[4] = 't';
-	//
-	//sendDataTty(fdSerial, buffRcvData, 5);
-	//while (1){
-	//	readDataNum = readDataTty(fdSerial, buffRcvData, rcvTimeOut, buffLen);
-	//	sendDataTty(fdSerial, buffRcvData, readDataNum);
-	//}
-
-	
-
-	
-	unsigned int readDataNum = 0;
-
-	int num = 0;
-	int max = 3;
-	serialSubProcess(num,max);
+	serialSubProcess(subProcessNum, subProcessMax);
 
 	return 0;
+
 }
