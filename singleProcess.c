@@ -19,6 +19,42 @@
 #define rcvTimeOut 4
 #define fileSave "fileSave.txt"
 
+/*******  mpu 6050 *********************************/
+//======================================  
+int SerFd = -1;
+double a[3], w[3], Angle[3], T;
+
+
+void DecodeIMUData(unsigned char chrTemp[])
+{
+	switch (chrTemp[1])
+	{
+	case 0x51:
+		a[0] = ((short)(chrTemp[3] << 8 | chrTemp[2])) / 32768.0 * 16;
+		a[1] = ((short)(chrTemp[5] << 8 | chrTemp[4])) / 32768.0 * 16;
+		a[2] = ((short)(chrTemp[7] << 8 | chrTemp[6])) / 32768.0 * 16;
+		T = ((short)(chrTemp[9] << 8 | chrTemp[8])) / 340.0 + 36.25;
+		printf("a = %4.3f\t%4.3f\t%4.3f\t\r\n", a[0], a[1], a[2]);
+		break;
+	case 0x52:
+		w[0] = ((short)(chrTemp[3] << 8 | chrTemp[2])) / 32768.0 * 2000;
+		w[1] = ((short)(chrTemp[5] << 8 | chrTemp[4])) / 32768.0 * 2000;
+		w[2] = ((short)(chrTemp[7] << 8 | chrTemp[6])) / 32768.0 * 2000;
+		T = ((short)(chrTemp[9] << 8 | chrTemp[8])) / 340.0 + 36.25;
+		printf("w = %4.3f\t%4.3f\t%4.3f\t\r\n", w[0], w[1], w[2]);
+		break;
+	case 0x53:
+		Angle[0] = ((short)(chrTemp[3] << 8 | chrTemp[2])) / 32768.0 * 180;
+		Angle[1] = ((short)(chrTemp[5] << 8 | chrTemp[4])) / 32768.0 * 180;
+		Angle[2] = ((short)(chrTemp[7] << 8 | chrTemp[6])) / 32768.0 * 180;
+		T = ((short)(chrTemp[9] << 8 | chrTemp[8])) / 340.0 + 36.25;
+		printf("Angle = %4.2f\t%4.2f\t%4.2f\tT=%4.2f\r\n", Angle[0], Angle[1], Angle[2], T);
+		break;
+	}
+}
+/******************************************************************/
+/**************************************/
+
 /*************Linux and Serial Port *********************/
 /*************Linux and Serial Port *********************/
 int openPort(int fd, int comport)
@@ -363,6 +399,11 @@ int serialSubProcess(int num,int max)
 
 int main(int argc, char** argv)
 {
+/*******  mpu 6050 *********************************/
+	int nTmp = 0, usRxLength = 0, i = 0, j = 0;
+	char chrBuffer[1024];
+	unsigned char chrTemp[1024];
+/*******  mpu 6050 *********************************/
 
 	pid_t pid;
 	int iSetOpt = 0;
@@ -387,33 +428,98 @@ int main(int argc, char** argv)
 		exit(1);
 	}
 	//子进程   
+	//else if (pid == 0)
+	//{
+	//	//sleep(3);
+	//	printf("Son Process id=%d,Parent Process id=%d\n", getpid(), getppid());
+	//
+	//		//openPort
+	//		if ((fdSerial = openPort(fdSerial, 5))<0)//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
+	//		{
+	//			perror("open_port error");
+	//			return -1;
+	//		}
+	//		//setOpt(fdSerial, 9600, 8, 'N', 1)
+	//		if ((iSetOpt = setOpt(fdSerial, 9600, 8, 'N', 1))<0)
+	//		{
+	//			perror("set_opt error");
+	//			//return -1;
+	//		}
+	//		printf("Serial fdSerial=%d\n", fdSerial);
+
+	//		tcflush(fdSerial, TCIOFLUSH);//清掉串口缓存
+	//		fcntl(fdSerial, F_SETFL, 0);//这个是设置为默认的阻塞模式的
+
+	//		
+	//		while (1){
+	//			readDataNum = read(fdSerial, buffRcvData, buffLen);
+	//			write(fdFileSave, buffRcvData, readDataNum);//将数据保存在文件fdFileSave 即"fileSave.txt"
+	//		}
+
+	//}
+
 	else if (pid == 0)
 	{
 		//sleep(3);
 		printf("Son Process id=%d,Parent Process id=%d\n", getpid(), getppid());
-	
-			//openPort
-			if ((fdSerial = openPort(fdSerial, 5))<0)//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
-			{
-				perror("open_port error");
-				return -1;
-			}
-			//setOpt(fdSerial, 9600, 8, 'N', 1)
-			if ((iSetOpt = setOpt(fdSerial, 9600, 8, 'N', 1))<0)
-			{
-				perror("set_opt error");
-				//return -1;
-			}
-			printf("Serial fdSerial=%d\n", fdSerial);
 
-			tcflush(fdSerial, TCIOFLUSH);//清掉串口缓存
-			fcntl(fdSerial, F_SETFL, 0);//这个是设置为默认的阻塞模式的
+		//openPort
+		if ((fdSerial = openPort(fdSerial, 4))<0)//1--"/dev/ttyS0",2--"/dev/ttyS1",3--"/dev/ttyS2",4--"/dev/ttyUSB0" 小电脑上是2--"/dev/ttyS1"
+		{
+			perror("open_port error");
+			return -1;
+		}
+		//setOpt(fdSerial, 9600, 8, 'N', 1)
+		if ((iSetOpt = setOpt(fdSerial, 115200, 8, 'N', 1))<0)
+		{
+			perror("set_opt error");
+			//return -1;
+		}
+		printf("Serial fdSerial=%d\n", fdSerial);
 
-			
-			while (1){
-				readDataNum = read(fdSerial, buffRcvData, buffLen);
-				write(fdFileSave, buffRcvData, readDataNum);//将数据保存在文件fdFileSave 即"fileSave.txt"
+		tcflush(fdSerial, TCIOFLUSH);//清掉串口缓存
+		fcntl(fdSerial, F_SETFL, 0);//这个是设置为默认的阻塞模式的
+
+
+		while (1)
+		{
+			nTmp = readDataTty(fdSerial, chrBuffer, 100, 1024);
+			//nTmp = read(fdSerial, chrBuffer,1024);
+			//if(nTmp)printf("%s",Buf);  
+			if (0 < nTmp)
+			{
+				if (nTmp>0)
+				{
+					usRxLength += nTmp;
+					while (usRxLength >= 11)
+					{
+						memcpy(chrTemp, chrBuffer, usRxLength);
+						if (!((chrTemp[0] == 0x55) & ((chrTemp[1] == 0x51) | (chrTemp[1] == 0x52) | (chrTemp[1] == 0x53))))
+						{
+							for (i = 1; i < usRxLength; i++) chrBuffer[i - 1] = chrBuffer[i];
+							usRxLength--;
+							continue;
+						}
+						DecodeIMUData(chrTemp);
+						/***********************************************************/
+						//v[0] = v[0] + a[0] * dt;
+						//x = x + v[0] * dt;
+						/*************************************************************/
+						for (i = 11; i < usRxLength; i++) chrBuffer[i - 11] = chrBuffer[i];
+						usRxLength -= 11;
+						//printf("rcv len=%d,data:%s\n",nTmp,Buf);  
+						//printf("Data:%f\n",Buf);  
+						//send_data_tty(SerFd, Buf, nTmp);  
+					}
+				}
+				/*for (i = 0; i<1000; i++)
+				{
+					for (j = 0; j<2000; j++);
+				}
+				sleep(2);*/
+
 			}
+		}
 
 	}
 	else
